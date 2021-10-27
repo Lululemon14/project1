@@ -19,14 +19,17 @@ tidy=TRUE, tidy.opts=list(width.cutoff=60), R.options=list(max.print=100))
 
 ## Data Wrangling, Exploration, Visualization
 
-### Name and EID here
+### Wesley Lu, wl8838
 
 #### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc.
-
+Humans inhale oxygen and exhale carbon dioxide as a waste product. An excessive level of carbon dioxide in the air could lead to insufficient oxygen and imbalanced pH levels in blood. Additionally, CO2 is a greenhouse gas. An increase in CO2 level leads to the greenhouse effect where less heat can escape from the surface of the Earth, causing graduate warming of Earth's climate system. This warming could have dramatic impacts on ecosystems in ways not foreseeable by humans, but ultimately could have a lasting impact on our global health. The goal of using these two datasets is to see if there is any correlation between the levels of carbon dioxide and global health over the years.
 ```{R}
 # read your datasets in here, e.g., with read_csv()
+library(tidyverse)
+library(gt)
+CO2 <- read_csv("CO2_Emissions_1960-2018.csv")
+health <- read_csv("country_health_indicators_v3.csv")
 
 ```
 
@@ -36,56 +39,135 @@ If your datasets are tidy already, demonstrate that you can reshape data with pi
 
 ```{R}
 # your tidying code (if applicable; can also wait until wrangling section)
+
+# untidy and then retidy
+CO2 <- CO2 %>% pivot_longer(cols=2:60,names_to = "Year", values_to="Emissions", values_drop_na=T)
+CO2 <- CO2 %>% pivot_wider(names_from="Year",values_from="Emissions")
 ```
 
-    
+`CO2` is tidied by listing years into one column, but untied back with years as columns because data from `health` are all collected in a single year.
+
+
 #### Joining/Merging
 
 ```{R}
 # your joining code
-
-# your joining code
+CO2 %>% inner_join(health, by=c('Country Name'='Country_Region')) -> data
+data %>% distinct(`Country Name`)
 ```
 
-Discussions of joining here. Feel encouraged to break up into more than once code chunk and discuss each in turn.
+The common ID of these two datasets is country; however, some countries exist in one dataset and not the other. Inner join is therefore selected as the joining method to ensure that there are valid values for both emissions and health indicators for all countries after joining. There are 152 IDs that both the dataset have in common.
+
+```{R}
+# your joining code
+CO2 %>% nrow()
+CO2 %>% summarize(n_distinct(`Country Name`))
+
+health %>% nrow()
+health %>% summarize(n_distinct(Country_Region))
+```
+
+There are 250 and 180 observations in `CO2` and `health` respectively. There are 250 and 180 distinct IDs in `CO2` and `health` respectively.
+
+```{R}
+unique_CO2 <- CO2 %>% anti_join(health, by=c('Country Name'='Country_Region'))
+unique_health <- health %>% anti_join(CO2, by=c('Country_Region'='Country Name'))
+
+# IDs appeared in CO2 but not health
+unique_CO2 %>% distinct(`Country Name`)
+
+# IDs appeared in health but not CO2
+unique_health %>% distinct(Country_Region)
+
+```
+There are 98 IDs appeared in `CO2` but not in `health` and 28 IDs appared in `health` but not in `CO2`.
+
+```{R}
+unique_CO2 %>% nrow()
+unique_health %>% nrow()
+
+```
+
+98 and 28 observations in `CO2` and `health` were dropped after joining respectively.
 
 ####  Wrangling
 
 ```{R}
 # your wrangling code
+data %>% rename(Country=`Country Name`, Emissions=`2018`) %>% 
+  select(Country, Emissions,`Cardiovascular diseases (%)`:`Nutritional deficiencies (%)`) -> better_data
+better_data %>% mutate(`Emissions>50`=case_when(Emissions>=median(Emissions) ~ "True", Emissions<median(Emissions) ~ "False")) -> better_data
+```
+I renamed two column names and selected 10 variables of interest for the final dataset. Additionally, I generated a variable as a function of `Emissions` to give insight on `Emissions` relating to various diseases in later use.
 
+```{R}
 # your wrangling code
+better_data %>% summarize_all(function(x)sum(is.na(x)))
+better_data %>% transmute(str_replace(`Emissions>50`,"^.",tolower))
 
-# your wrangling code
+better_data %>% group_by(Country) %>% summarize(n())
+better_data %>% group_by(`Emissions>50`) %>% summarize(n())
+better_data %>% group_by(Country, `Emissions>50`) %>% summarize_all(n_distinct, na.rm=T)
+better_data %>% arrange(desc(Emissions)) %>%
+  filter(`Cardiovascular diseases (%)`>median(`Cardiovascular diseases (%)`, na.rm = T))
 ```
 
-Your discussion of wrangling section here. Feel encouraged to break up into more than once code chunk and discuss each in turn.
+I wrote a function to calculate the number of missing values for all variables. I performed a stringr function to lowercase the first letter of the `Emissions>50` column. I calculated the counts of each level for categorical variable `Country` and `Emissions>50`. Grouping `Country` and `Emissions>50` simultaneously, I found the number of distinct values in each column. Lastly, I generated a table with countries that are more likely getting a cardiovascular disease, viewing by descending `Emissions`.
+
+```{R}
+# your wrangling code
+better_data %>% group_by(`Emissions>50`) %>% 
+  summarize_at(c(2:12), .funs=list(mean=mean,sd=sd,min=min,max=max), na.rm=T) %>% 
+  pivot_longer(-1) %>% separate(name, into=c("name","stat"), sep="_") %>% pivot_wider() -> table1
+
+table1 %>% gt %>%
+  tab_header(title=md("**Summary Statistics**"),
+             subtitle=md("A table of my summary statistics")) %>%
+  tab_spanner(label="Variables", columns=c("Emissions"))
+```
+
+Grouping by `Emissions>50`, I calculated the mean, standard deviation, minimum, and maximum of the percent getting the selected 10 diseases. The result is reorganized in an easier-to-read table using the `gt` package. Interestingly, the spread of non-contagious diseases seems to have an increase when CO2 emission increases, but contagious diseases seem to fall down when CO2 emission increases. However, there are too many confounding factors to come to any conclusive findings.
 
 
 #### Visualizing
 
 ```{R}
 # your plot 1
+better_data %>% pivot_longer(cols=3:12,names_to = "Diseases", values_to="Percent", values_drop_na=T) %>%
+  mutate(Diseases = str_remove_all(Diseases, "[(/%)]")) -> long
+
+long %>% ggplot(aes(Emissions, `Percent`)) + geom_point(size=0.3) +
+  labs(x = "Emissions (metric tons per capita)", y = "Percent of Disease", title = "Risk of Dieases over CO2 Emissions") +
+  geom_smooth(method="lm", aes(color = Diseases)) + 
+  theme(legend.position = "left") + 
+  scale_x_continuous(breaks=seq(0,40,5)) + scale_x_log10()
 ```
 
-Your discussion of plot 1
+This scatterplot depicts the relationship between `Emissions` and various diseases. As shown, about 50% of the diseases show a positive relationship with CO2 emissions while the other 50% show a negative relationship. Ones with a negative relationship are more likely to be infectious and transmittable diseases. 
 
 ```{R}
 # your plot 2
+long %>% ggplot(aes(x = Diseases, y = Percent, fill = `Emissions>50`)) +
+  geom_bar(stat="summary", fun=mean, position="dodge") +
+  geom_errorbar(stat="summary", fun.data=mean_se, position="dodge") +
+  theme(axis.text.x=element_text(angle=45, vjust=1, hjust=1, size = 7, face="bold")) +
+  labs(y = "Percent of Disease", title = "Risk of Dieases") +
+  scale_y_continuous(n.breaks=4)
 ```
 
-Your discussion of plot 2
+This grouped bar graph compares the mean percent of a disease in which emissions are greater and less than the median emissions. The resulting diagram shows a similar relationship as the last graph. About 50% of diseases are more likely to occur when the CO2 emissions is greater than the median emissions, and the other 50% are more likely to occur when the CO2 emissions is less than the median emissions.
 
 ```{R}
 # your plot 3
+long %>% ggplot(aes(x=Diseases, y=Percent))+geom_boxplot()+
+  geom_jitter(alpha=.6, aes(color=Diseases)) +
+  facet_wrap(~`Emissions>50`) +
+  labs(title = "Distribution of Diseases Regards to Emissions", x = "Diseases", y = "Percent of diseases") +
+  theme(legend.text = element_text(size=6)) +
+  theme(axis.text.x=element_text(angle=45, vjust=1, hjust=1, size = 5, face="bold")) +   
+  scale_y_continuous(n.breaks=7)
+
 ```
 
-Your discussion of plot 3
-
-#### Concluding Remarks
-
-If any!
-
-
-
+This grouped boxplot depicts the distribution of various diseases based on whether the emissions is greater than the median emissions. Most diseases have a similar spread regardless of whether the CO2 emissions is greater than the median emissions, except for common infection diseases, sexually transmitted diseases, and tropical diseases. All these diseases are infectious and transmittable. This finding is similar to results calculated using means as above.
 
