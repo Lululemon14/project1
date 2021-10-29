@@ -23,14 +23,13 @@ tidy=TRUE, tidy.opts=list(width.cutoff=60), R.options=list(max.print=100))
 
 #### Introduction 
 
-Humans inhale oxygen and exhale carbon dioxide as a waste product. An excessive level of carbon dioxide in the air could lead to insufficient oxygen and imbalanced pH levels in blood. Additionally, CO2 is a greenhouse gas. An increase in CO2 level leads to the greenhouse effect where less heat can escape from the surface of the Earth, causing graduate warming of Earth's climate system. This warming could have dramatic impacts on ecosystems in ways not foreseeable by humans, but ultimately could have a lasting impact on our global health. The goal of using these two datasets is to see if there is any correlation between the levels of carbon dioxide and global health over the years.
+Humans inhale oxygen and exhale carbon dioxide as a waste product. An excessive level of carbon dioxide in the air could lead to insufficient oxygen and imbalanced pH levels in blood. Additionally, an increase in CO2, a greenhouse gas, can lead to a phenomenon called the greenhouse effect where less heat escapes from the surface of the Earth, causing graduate warming of Earth's climate system. This warming could have dramatic impacts on ecosystems in ways not foreseeable by humans, but ultimately could have a lasting impact on our global health. The goal of using these two datasets is to see if there is any correlation between the levels of carbon dioxide and global health.
 ```{R}
 # read your datasets in here, e.g., with read_csv()
 library(tidyverse)
 library(gt)
 CO2 <- read_csv("CO2_Emissions_1960-2018.csv")
 health <- read_csv("country_health_indicators_v3.csv")
-
 ```
 
 #### Tidying: Reshaping
@@ -45,7 +44,7 @@ CO2 <- CO2 %>% pivot_longer(cols=2:60,names_to = "Year", values_to="Emissions", 
 CO2 <- CO2 %>% pivot_wider(names_from="Year",values_from="Emissions")
 ```
 
-`CO2` is tidied by listing years into one column, but untied back with years as columns because data from `health` are all collected in a single year.
+`CO2` is tidied by listing years into one column, but untied years back to columns because data from `health` are all collected in a single year.
 
 
 #### Joining/Merging
@@ -53,7 +52,7 @@ CO2 <- CO2 %>% pivot_wider(names_from="Year",values_from="Emissions")
 ```{R}
 # your joining code
 CO2 %>% inner_join(health, by=c('Country Name'='Country_Region')) -> data
-data %>% distinct(`Country Name`)
+data %>% summarize(n_distinct(`Country Name`))
 ```
 
 The common ID of these two datasets is country; however, some countries exist in one dataset and not the other. Inner join is therefore selected as the joining method to ensure that there are valid values for both emissions and health indicators for all countries after joining. There are 152 IDs that both the dataset have in common.
@@ -67,17 +66,14 @@ health %>% nrow()
 health %>% summarize(n_distinct(Country_Region))
 ```
 
-There are 250 and 180 observations in `CO2` and `health` respectively. There are 250 and 180 distinct IDs in `CO2` and `health` respectively.
+There are 250 and 180 observations in `CO2` and `health` respectively. As such, both of the original datasets have more observations than the joined dataset. There are 250 and 180 distinct IDs in `CO2` and `health` respectively.  
 
 ```{R}
 unique_CO2 <- CO2 %>% anti_join(health, by=c('Country Name'='Country_Region'))
 unique_health <- health %>% anti_join(CO2, by=c('Country_Region'='Country Name'))
 
-# IDs appeared in CO2 but not health
-unique_CO2 %>% distinct(`Country Name`)
-
-# IDs appeared in health but not CO2
-unique_health %>% distinct(Country_Region)
+unique_CO2 %>% summarize(n_distinct(`Country Name`))
+unique_health %>% summarize(n_distinct(Country_Region))
 
 ```
 There are 98 IDs appeared in `CO2` but not in `health` and 28 IDs appared in `health` but not in `CO2`.
@@ -169,5 +165,5 @@ long %>% ggplot(aes(x=Diseases, y=Percent))+geom_boxplot()+
 
 ```
 
-This grouped boxplot depicts the distribution of various diseases based on whether the emissions is greater than the median emissions. Most diseases have a similar spread regardless of whether the CO2 emissions is greater than the median emissions, except for common infection diseases, sexually transmitted diseases, and tropical diseases. All these diseases are infectious and transmittable. This finding is similar to results calculated using means as above.
+This grouped boxplot depicts the distribution of various diseases based on whether the emissions is greater than the median emissions. Most diseases have a similar spread regardless of whether the CO2 emissions is greater than the median emissions, except for common infection diseases, sexually transmitted diseases, and tropical diseases. All these diseases are infectious and transmittable, coinciding with earlier findings using means.
 
